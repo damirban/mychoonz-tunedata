@@ -132,6 +132,7 @@ const HASHED = {
   member_set_tunes: 'set_id, position',
   recordings: 'id',
   recording_tracks: 'recording_id, track, number',
+  tune_search: 'tune_id, alias, text',
 };
 
 class BuildError extends Error {}
