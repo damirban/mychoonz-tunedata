@@ -1,0 +1,10 @@
+{
+  "name": "mychoonz-tunedata",
+  "private": true,
+  "description": "Builds MyChoonz's tune database from The Session's data dump.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test --disable-warning=ExperimentalWarning test/*.test.js",
+    "build": "node --disable-warning=ExperimentalWarning src/build.js"
+  }
+}
