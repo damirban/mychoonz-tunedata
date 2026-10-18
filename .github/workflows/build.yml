@@ -40,7 +40,8 @@ jobs:
             echo "TAG=v$schema-$(date -u -d "$date" +%Y%m%d)-r${{ github.run_number }}"
           } >> "$GITHUB_ENV"
           mkdir -p work
-          curl -fsSL --retry 3 -o work/thesession.db \
+          # HTTP/1.1: GitHub's LFS server sometimes breaks a long HTTP/2 download.
+          curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 10 -o work/thesession.db \
             "https://media.githubusercontent.com/media/adactio/TheSession-data/$sha/thesession.db"
 
       # The build prints names, counts and row numbers only, never values
