@@ -104,10 +104,14 @@ CREATE TABLE recording_tracks (
   PRIMARY KEY (recording_id, track, number)
 ) WITHOUT ROWID;
 
--- Search over tune names (alias = 0) and aliases (alias = 1), ignoring case and accents.
-CREATE VIRTUAL TABLE tune_search USING fts5(
-  name, tune_id UNINDEXED, alias UNINDEXED,
-  tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3'
+-- Search over tune names (alias = 0) and aliases (alias = 1). text is the
+-- name folded for search (see fold()), with a space at each end, so the app
+-- can match each word of a query at a word start: text LIKE '% word%'.
+-- A plain table rather than FTS5, which Android's own SQLite doesn't always have.
+CREATE TABLE tune_search (
+  tune_id INTEGER NOT NULL,
+  alias INTEGER NOT NULL,
+  text TEXT NOT NULL
 );
 `;
 
@@ -131,6 +135,33 @@ const HASHED = {
 };
 
 class BuildError extends Error {}
+
+/**
+ * Letters folded to their plain form for search. The app folds a query
+ * with the same table (lib/services/tune_data.dart), so keep them in step.
+ */
+const FOLD = {
+  à: 'a', á: 'a', â: 'a', ã: 'a', ä: 'a', å: 'a', ā: 'a', ă: 'a', ą: 'a', æ: 'ae',
+  ç: 'c', ć: 'c', č: 'c', ď: 'd', đ: 'd', ð: 'd',
+  è: 'e', é: 'e', ê: 'e', ë: 'e', ē: 'e', ė: 'e', ę: 'e', ě: 'e',
+  ğ: 'g', ì: 'i', í: 'i', î: 'i', ï: 'i', ī: 'i', į: 'i', ı: 'i',
+  ł: 'l', ľ: 'l', ñ: 'n', ń: 'n', ň: 'n',
+  ò: 'o', ó: 'o', ô: 'o', õ: 'o', ö: 'o', ø: 'o', ō: 'o', ő: 'o', œ: 'oe',
+  ŕ: 'r', ř: 'r', ś: 's', š: 's', ş: 's', ß: 'ss', ť: 't', ţ: 't', þ: 'th',
+  ù: 'u', ú: 'u', û: 'u', ü: 'u', ū: 'u', ů: 'u', ű: 'u', ų: 'u',
+  ý: 'y', ÿ: 'y', ź: 'z', ż: 'z', ž: 'z',
+};
+
+/**
+ * A name as search sees it: lower case, accents folded, apostrophes dropped
+ * ("Coffey's" -> "coffeys"), other punctuation a word break, single spaces.
+ */
+function fold(name) {
+  const lower = name.toLowerCase().replace(/['’`]/g, '');
+  let out = '';
+  for (const ch of lower) out += FOLD[ch] ?? ch;
+  return out.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
 
 const q = (name) => '"' + name.replace(/"/g, '""') + '"';
 /** SQL that is true when [col] holds a whole number. */
@@ -334,13 +365,12 @@ function copyRecordings(db, report) {
 }
 
 function fillSearch(db) {
-  db.exec(`
-    INSERT INTO tune_search (name, tune_id, alias)
-    SELECT name, id, 0 FROM tunes
-    UNION ALL
-    SELECT alias, tune_id, 1 FROM aliases;
-    INSERT INTO tune_search (tune_search) VALUES ('optimize');
-  `);
+  const insert = db.prepare('INSERT INTO tune_search (tune_id, alias, text) VALUES (?, ?, ?)');
+  const names = db.prepare('SELECT id, name, 0 AS alias FROM tunes UNION ALL SELECT tune_id, alias, 1 FROM aliases');
+  for (const r of names.iterate()) {
+    const text = fold(r.name);
+    if (text) insert.run(r.id, r.alias, ` ${text} `);
+  }
 }
 
 /** A hash of the content, independent of SQLite's file layout and of build time. */
@@ -466,4 +496,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { build, buildAll, BuildError, SCHEMA_VERSION, ATTRIBUTION };
+module.exports = { build, buildAll, fold, BuildError, SCHEMA_VERSION, ATTRIBUTION };

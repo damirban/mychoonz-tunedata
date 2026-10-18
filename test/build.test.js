@@ -11,7 +11,7 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
-const { build, buildAll, BuildError, SCHEMA_VERSION } = require('../src/build');
+const { build, buildAll, fold, BuildError, SCHEMA_VERSION } = require('../src/build');
 
 const COLUMNS = {
   tunes: ['tune_id', 'setting_id', 'name', 'type', 'meter', 'mode', 'abc', 'date', 'username', 'composer'],
@@ -202,16 +202,30 @@ test('sessions and events are left out', () => {
   assert.ok(!tables.includes('events'));
 });
 
-test('search ignores case and accents, matches prefixes, and finds tunes by alias', () => {
+test('fold: lower case, accents folded, apostrophes dropped, punctuation splits words', () => {
+  assert.strictEqual(fold('Cailín na Spéire'), 'cailin na speire');
+  assert.strictEqual(fold("Coffey's"), 'coffeys');
+  assert.strictEqual(fold('Ríl Mhór, An (No. 2)'), 'ril mhor an no 2');
+  assert.strictEqual(fold('Ærø Œuvre Straße'), 'aero oeuvre strasse');
+});
+
+test('search: each word matches a word start in a name or alias, ignoring case and accents', () => {
   const { db } = buildFrom(baseRows());
-  const find = (term) =>
-    all(db, 'SELECT DISTINCT tune_id FROM tune_search WHERE tune_search MATCH ? ORDER BY tune_id', term)
-      .map((r) => r.tune_id);
+  // As the app searches: every word of the folded query at a word start.
+  const find = (query) => {
+    const words = fold(query).split(' ').filter(Boolean);
+    const where = words.map(() => "text LIKE '% ' || ? || '%'").join(' AND ');
+    return all(db, `SELECT DISTINCT tune_id FROM tune_search WHERE ${where} ORDER BY tune_id`, ...words).map((r) => r.tune_id);
+  };
   assert.deepStrictEqual(find('cailin'), [2]);
-  assert.deepStrictEqual(find('SPEIRE'), [2]);
-  assert.deepStrictEqual(find('banj*'), [3]);
+  assert.deepStrictEqual(find('SPÉIRE'), [2]);
+  assert.deepStrictEqual(find('banj'), [3]);
+  assert.deepStrictEqual(find('anjo'), []);
   assert.deepStrictEqual(find('tin kettle'), [1]);
+  assert.deepStrictEqual(find('the kett'), [1]);
   assert.deepStrictEqual(find('sky'), [2]);
+  const row = db.prepare('SELECT text FROM tune_search WHERE tune_id = 1 AND alias = 0').get();
+  assert.strictEqual(row.text, ' the copper kettle ');
 });
 
 test('meta records the schema, source, licence and dump', () => {

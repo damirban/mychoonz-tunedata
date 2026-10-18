@@ -53,9 +53,9 @@ The Session's licence forbids processing the data with AI tools. The build scrip
 | `member_set_tunes` | 329,282 | `set_id`, `position` (1, 2, 3…), `tune_id`, `setting_id` |
 | `recordings` | 7,981 | `id`, `artist`, `title` |
 | `recording_tracks` | 203,361 | `recording_id`, `track`, `number` (the tune's place in the track), `tune_id` (null when the tune isn't on the site), `tune_name` as listed |
-| `tune_search` | | FTS5 over tune names (`alias` = 0) and aliases (`alias` = 1); ignores case and accents; prefix queries |
+| `tune_search` | 52,872 | `tune_id`, `alias` (0 a tune name, 1 an alias), `text`: the name folded for search (lower case, accents folded, apostrophes dropped, other punctuation a space) with a space at each end. The app folds a query the same way and matches each word at a word start: `text LIKE '% word%'`. A plain table, not FTS5, because Android's own SQLite doesn't always have FTS5 |
 
-Size on 18 Oct 2026: 43.4 MB, 17.5 MB gzipped. Builds in about 20 seconds.
+Size on 18 Oct 2026: 39.1 MB, 16.4 MB gzipped. Builds in about 20 seconds.
 
 What the build changes from the dump:
 
