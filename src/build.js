@@ -1,6 +1,6 @@
 // Builds MyChoonz's tune database from The Session's data dump.
 //
-//   node src/build.js --input thesession.db --out out [--dump-commit SHA] [--dump-date ISO] [--tag TAG]
+//   node src/build.js --input thesession.db --out out [--dump-commit SHA] [--dump-date ISO] [--tag TAG] [--file-url URL]
 //
 // Writes out/tunedata.db, out/tunedata.db.gz, out/manifest.json and
 // out/report.json. The report and the console output hold names, counts and
@@ -407,7 +407,7 @@ function sha256File(file) {
 }
 
 /** Builds the database, gzips it and writes the manifest and report into [out]. */
-function buildAll({ input, out, dumpCommit, dumpDate, tag }) {
+function buildAll({ input, out, dumpCommit, dumpDate, tag, fileUrl }) {
   fs.mkdirSync(out, { recursive: true });
   const dbFile = path.join(out, 'tunedata.db');
   const gzFile = dbFile + '.gz';
@@ -422,6 +422,8 @@ function buildAll({ input, out, dumpCommit, dumpDate, tag }) {
     builtAt: new Date().toISOString(),
     contentHash: report.contentHash,
     file: path.basename(gzFile),
+    // Where the published file will be, so the app needn't work it out from the manifest's URL.
+    fileUrl: fileUrl || null,
     size: fs.statSync(dbFile).size,
     sha256: sha256File(dbFile),
     gzipSize: fs.statSync(gzFile).size,
@@ -447,7 +449,7 @@ function parseArgs(argv) {
 if (require.main === module) {
   const args = parseArgs(process.argv.slice(2));
   if (!args.input || !args.out) {
-    console.error('Usage: node src/build.js --input thesession.db --out out [--dump-commit SHA] [--dump-date ISO] [--tag TAG]');
+    console.error('Usage: node src/build.js --input thesession.db --out out [--dump-commit SHA] [--dump-date ISO] [--tag TAG] [--file-url URL]');
     process.exit(2);
   }
   try {

@@ -270,11 +270,12 @@ test('buildAll writes the gzipped file and a manifest that matches it', () => {
   const dir = tmp();
   const input = makeDump(dir);
   const out = path.join(dir, 'out');
-  const { manifest } = buildAll({ input, out, dumpCommit: 'abc123', dumpDate: '2026-10-18T12:00:00Z', tag: 'v1-20261018' });
+  const { manifest } = buildAll({ input, out, dumpCommit: 'abc123', dumpDate: '2026-10-18T12:00:00Z', tag: 'v1-20261018', fileUrl: 'https://example.test/v1-20261018/tunedata.db.gz' });
   const gz = fs.readFileSync(path.join(out, manifest.file));
   const db = zlib.gunzipSync(gz);
   assert.strictEqual(manifest.schema, SCHEMA_VERSION);
   assert.strictEqual(manifest.tag, 'v1-20261018');
+  assert.strictEqual(manifest.fileUrl, 'https://example.test/v1-20261018/tunedata.db.gz');
   assert.strictEqual(manifest.size, db.length);
   assert.strictEqual(manifest.sha256, crypto.createHash('sha256').update(db).digest('hex'));
   assert.strictEqual(manifest.gzipSha256, crypto.createHash('sha256').update(gz).digest('hex'));
