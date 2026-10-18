@@ -1,0 +1,91 @@
+name: Build tune database
+
+on:
+  schedule:
+    # Sundays at 20:00 UTC, after The Session's weekend update.
+    - cron: '0 20 * * 0'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish even if the content hasn't changed since the last release
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test
+        run: npm test
+
+      - name: Download the dump
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "repos/adactio/TheSession-data/commits?path=thesession.db&per_page=1" --jq '.[0].sha')
+          date=$(gh api "repos/adactio/TheSession-data/commits/$sha" --jq .commit.committer.date)
+          schema=$(node -p "require('./src/build').SCHEMA_VERSION")
+          {
+            echo "DUMP_SHA=$sha"
+            echo "DUMP_DATE=$date"
+            echo "TAG=v$schema-$(date -u -d "$date" +%Y%m%d)-r${{ github.run_number }}"
+          } >> "$GITHUB_ENV"
+          mkdir -p work
+          curl -fsSL --retry 3 -o work/thesession.db \
+            "https://media.githubusercontent.com/media/adactio/TheSession-data/$sha/thesession.db"
+
+      # The build prints names, counts and row numbers only, never values
+      # from the dump, so its output is safe to keep in the logs.
+      - name: Build
+        run: |
+          npm run -s build -- --input work/thesession.db --out out \
+            --dump-commit "$DUMP_SHA" --dump-date "$DUMP_DATE" --tag "$TAG" \
+            --file-url "https://github.com/${{ github.repository }}/releases/download/$TAG/tunedata.db.gz"
+          node -e '
+            const m = require("./out/manifest.json"), r = require("./out/report.json");
+            const mb = (b) => (b / 1048576).toFixed(1) + " MB";
+            const lines = [
+              `## Tune database ${m.tag}`,
+              `Dump ${m.dumpCommit.slice(0, 7)} of ${m.dumpDate}. ${mb(m.size)}, ${mb(m.gzipSize)} gzipped.`,
+              "", "| Table | Rows |", "|---|---|",
+              ...Object.entries(m.counts).map(([t, n]) => `| ${t} | ${n} |`),
+              "", "Problems: " + (r.problems.length ? r.problems.length : "none"),
+            ];
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          '
+
+      # Private copy for development builds of the app (fetched with gh).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunedata
+          path: |
+            out/tunedata.db.gz
+            out/manifest.json
+            out/report.json
+          retention-days: 30
+
+      # Publishing is off until the repository variable PUBLISH is "true".
+      # Releases are public once the repository is.
+      - name: Publish
+        if: vars.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now=$(jq -r .contentHash out/manifest.json)
+          prev=$(gh release download --pattern manifest.json --output - 2>/dev/null | jq -r .contentHash || true)
+          if [ "$prev" = "$now" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "The content hasn't changed since the last release; nothing to publish."
+            exit 0
+          fi
+          gh release create "$TAG" out/tunedata.db.gz out/manifest.json \
+            --title "Tune database $TAG" --latest \
+            --notes "Built from The Session's data dump (adactio/TheSession-data, commit $DUMP_SHA). Contains information from The Session (https://thesession.org/), made available under the ODC Open Database License (ODbL) v1.0: https://opendatacommons.org/licenses/odbl/1-0/"
