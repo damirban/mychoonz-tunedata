@@ -136,6 +136,12 @@ const q = (name) => '"' + name.replace(/"/g, '""') + '"';
 /** SQL that is true when [col] holds a whole number. */
 const whole = (col) => `(${col} <> '' AND ${col} NOT GLOB '*[^0-9]*')`;
 const int = (col) => `CAST(${col} AS INTEGER)`;
+/**
+ * SQL for a name with a trailing ", The" moved to the front ("Kesh, The" ->
+ * "The Kesh"), as the app and The Session's pages show it. The dump stores
+ * names sorted that way; other articles are too rare to move.
+ */
+const named = (col) => `CASE WHEN ${col} GLOB '*, The' THEN 'The ' || substr(${col}, 1, length(${col}) - 5) ELSE ${col} END`;
 
 function checkColumns(db) {
   for (const [table, cols] of Object.entries(REQUIRED)) {
@@ -191,7 +197,7 @@ function copyTunes(db, report) {
   db.exec(`
     INSERT INTO tunes (id, name, type, composer, settings)
     SELECT tid, name, type, composer, 0 FROM (
-      SELECT ${int('tune_id')} AS tid, name, NULLIF(type, '') AS type,
+      SELECT ${int('tune_id')} AS tid, ${named('trim(name)')} AS name, NULLIF(type, '') AS type,
              max(NULLIF(composer, '')) OVER w AS composer,
              row_number() OVER (w ORDER BY ${int('setting_id')}, rowid) AS rn
       FROM src.tunes WHERE ${ok}
@@ -223,7 +229,7 @@ function copyAliases(db, report) {
   const ok = okRow('aliases');
   db.exec(`
     INSERT OR IGNORE INTO aliases (tune_id, alias)
-    SELECT ${int('tune_id')}, trim(alias) FROM src.aliases
+    SELECT ${int('tune_id')}, ${named('trim(alias)')} FROM src.aliases
     WHERE ${ok} AND trim(alias) <> '' AND ${int('tune_id')} IN (SELECT id FROM tunes)
     ORDER BY rowid;
   `);
@@ -307,7 +313,7 @@ function copyRecordings(db, report) {
     INSERT OR IGNORE INTO recording_tracks (recording_id, track, number, tune_id, tune_name)
     SELECT ${int('id')}, ${int('track')}, ${int('number')},
            CASE WHEN ${whole('tune_id')} AND ${int('tune_id')} > 0 THEN ${int('tune_id')} END,
-           NULLIF(tune, '')
+           NULLIF(${named('trim(tune)')}, '')
     FROM src.recordings WHERE ${ok} ORDER BY rowid;
   `);
   const used = count(db, `SELECT count(*) AS n FROM src.recordings WHERE ${ok}`);

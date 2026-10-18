@@ -32,16 +32,16 @@ function baseRows() {
   return {
     tunes: [
       // tune_id, setting_id, name, type, meter, mode, abc, date, username, composer
-      ['1', '11', 'The Copper Kettle', 'reel', '4/4', 'Dmajor', ABC1, '2001-01-01 10:00:00', 'piper', ''],
-      ['1', '12', 'The Copper Kettle', 'reel', '4/4', 'Dmajor', ABC1 + 'x', '2002-02-02 10:00:00', 'fiddler', 'A. Maker'],
+      ['1', '11', 'Copper Kettle, The', 'reel', '4/4', 'Dmajor', ABC1, '2001-01-01 10:00:00', 'piper', ''],
+      ['1', '12', 'Copper Kettle, The', 'reel', '4/4', 'Dmajor', ABC1 + 'x', '2002-02-02 10:00:00', 'fiddler', 'A. Maker'],
       ['2', '21', 'Cailín na Spéire', 'jig', '6/8', 'Gmajor', ABC2, '2003-03-03 10:00:00', 'piper', ''],
       ['3', '31', 'Banjo Breakdown', 'reel', '4/4', 'Gmajor', ABC1, '2004-04-04 10:00:00', 'picker', ''],
       // A setting listed twice, as in the real dump.
       ['3', '31', 'Banjo Breakdown', 'reel', '4/4', 'Gmajor', ABC1, '2004-04-04 10:00:00', 'picker', ''],
     ],
     aliases: [
-      ['1', 'The Tin Kettle', 'The Copper Kettle'],
-      ['1', 'The Tin Kettle', 'The Copper Kettle'],
+      ['1', 'Tin Kettle, The', 'Copper Kettle, The'],
+      ['1', 'Tin Kettle, The', 'Copper Kettle, The'],
       ['2', 'Sky Girl', 'Cailín na Spéire'],
       ['99', 'Nobody Knows', 'Missing'],
     ],
@@ -59,7 +59,7 @@ function baseRows() {
     ],
     recordings: [
       // id, artist, recording, track, number, tune, tune_id
-      ['900', 'The Made-Up Band', 'First Album', '1', '1', 'The Copper Kettle', '1'],
+      ['900', 'The Made-Up Band', 'First Album', '1', '1', 'Copper Kettle, The', '1'],
       ['900', 'The Made-Up Band', 'First Album', '1', '2', 'Banjo Breakdown', '3'],
       ['900', 'The Made-Up Band', 'First Album', '2', '1', 'Some Unknown Air', ''],
       ['901', 'A Duo', 'Second Album', '1', '1', 'Cailín na Spéire', '2'],
@@ -105,6 +105,19 @@ test('tunes take name, type and composer from their settings; IDs are integers',
   ]);
   assert.strictEqual(db.prepare("SELECT typeof(id) AS t FROM settings LIMIT 1").get().t, 'integer');
   assert.strictEqual(report.counts.tunes, 3);
+});
+
+test('a trailing ", The" moves to the front of names, aliases and track names; other articles stay', () => {
+  const rows = baseRows();
+  rows.tunes.push(['4', '41', 'Danse, La', 'waltz', '3/4', 'Dmajor', ABC1, '', 'x', '']);
+  const { db } = buildFrom(rows);
+  assert.strictEqual(db.prepare('SELECT name FROM tunes WHERE id = 1').get().name, 'The Copper Kettle');
+  assert.strictEqual(db.prepare('SELECT name FROM tunes WHERE id = 4').get().name, 'Danse, La');
+  assert.strictEqual(db.prepare('SELECT alias FROM aliases WHERE tune_id = 1').get().alias, 'The Tin Kettle');
+  assert.strictEqual(
+    db.prepare('SELECT tune_name FROM recording_tracks WHERE recording_id = 900 AND track = 1 AND number = 1').get().tune_name,
+    'The Copper Kettle',
+  );
 });
 
 test('a setting listed twice is kept once', () => {

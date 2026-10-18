@@ -47,7 +47,7 @@ The Session's licence forbids processing the data with AI tools. The build scrip
 | `meta` | | `schema_version`, `source`, `licence`, `attribution`, `dump_commit`, `dump_date` |
 | `tunes` | 23,355 | `id`, `name`, `type`, `composer`, `tunebooks` (popularity, 0 when not listed), `settings` (count). Name and type from the tune's first setting |
 | `settings` | 55,574 | `id`, `tune_id`, `meter`, `mode`, `abc`, `date`, `username` (who posted it) |
-| `aliases` | 29,518 | `tune_id`, `alias` |
+| `aliases` | 29,517 | `tune_id`, `alias` |
 | `members` | 11,585 | `id`, `username` |
 | `member_sets` | 130,297 | `id`, `member_id`, `date` |
 | `member_set_tunes` | 329,282 | `set_id`, `position` (1, 2, 3…), `tune_id`, `setting_id` |
@@ -55,10 +55,11 @@ The Session's licence forbids processing the data with AI tools. The build scrip
 | `recording_tracks` | 203,361 | `recording_id`, `track`, `number` (the tune's place in the track), `tune_id` (null when the tune isn't on the site), `tune_name` as listed |
 | `tune_search` | | FTS5 over tune names (`alias` = 0) and aliases (`alias` = 1); ignores case and accents; prefix queries |
 
-Size on 18 Oct 2026: 41.5 MB, 17.5 MB gzipped.
+Size on 18 Oct 2026: 43.4 MB, 17.5 MB gzipped. Builds in about 20 seconds.
 
 What the build changes from the dump:
 
+- **Names:** the dump stores names with a trailing ", The" ("Kesh, The"). The build moves it to the front ("The Kesh"), as the app and The Session's pages show names, in tune names, aliases and track names. Other articles (", La", ", An") are left as they are; there are only a handful.
 - **Duplicate settings** (the same `setting_id` twice) are kept once.
 - **Set positions:** some sets have two tunes at the same `settingorder` (1,657 sets on 18 Oct). All tunes are kept and numbered by `settingorder`, then by the dump's row order.
 - **Usernames** of members move to `members`; the ABC in the dump's `sets` is dropped (it's in `settings`).
