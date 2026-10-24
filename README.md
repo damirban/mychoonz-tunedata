@@ -40,12 +40,12 @@ The Session's licence forbids processing the data with AI tools. The build scrip
 
 ## The file
 
-`tunedata.db`, schema version 1 (also `PRAGMA user_version`). All IDs are The Session's.
+`tunedata.db`, schema version 2 (also `PRAGMA user_version`). All IDs are The Session's.
 
 | Table | Rows (18 Oct 2026) | Contents |
 |---|---|---|
 | `meta` | | `schema_version`, `source`, `licence`, `attribution`, `dump_commit`, `dump_date` |
-| `tunes` | 23,355 | `id`, `name`, `type`, `composer`, `tunebooks` (popularity, 0 when not listed), `settings` (count). Name and type from the tune's first setting |
+| `tunes` | 23,355 | `id`, `name`, `type`, `composer`, `key`, `tunebooks` (popularity, 0 when not listed), `settings` (count). Name and type from the tune's first setting; `key` is the `mode` most of its settings share (on a tie, the earliest setting's), NULL when none has one. Schema 2 added `key` |
 | `settings` | 55,574 | `id`, `tune_id`, `meter`, `mode`, `abc`, `date`, `username` (who posted it) |
 | `aliases` | 29,517 | `tune_id`, `alias` |
 | `members` | 11,585 | `id`, `username` |
