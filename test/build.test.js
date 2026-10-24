@@ -107,6 +107,34 @@ test('tunes take name, type and composer from their settings; IDs are integers',
   assert.strictEqual(report.counts.tunes, 3);
 });
 
+test('a tune\'s key is the one most of its settings share; on a tie the lowest setting ID wins', () => {
+  const rows = baseRows();
+  rows.tunes.push(
+    // Two settings in A dorian beat one in G major, though G major was posted first.
+    ['4', '41', 'Three Keys', 'reel', '4/4', 'Gmajor', ABC1, '', 'x', ''],
+    ['4', '42', 'Three Keys', 'reel', '4/4', 'Adorian', ABC1, '', 'x', ''],
+    ['4', '43', 'Three Keys', 'reel', '4/4', 'Adorian', ABC1, '', 'x', ''],
+    // One each: the lower setting ID wins, whatever the dump's row order.
+    ['5', '52', 'Even Split', 'jig', '6/8', 'Eminor', ABC2, '', 'x', ''],
+    ['5', '51', 'Even Split', 'jig', '6/8', 'Dmajor', ABC2, '', 'x', ''],
+    // A setting without a key doesn't count; a tune with none has no key.
+    ['6', '61', 'Half Known', 'reel', '4/4', '', ABC1, '', 'x', ''],
+    ['6', '62', 'Half Known', 'reel', '4/4', '', ABC1, '', 'x', ''],
+    ['6', '63', 'Half Known', 'reel', '4/4', 'Bminor', ABC1, '', 'x', ''],
+    ['7', '71', 'No Key', 'air', '3/4', '', ABC1, '', 'x', ''],
+  );
+  const { db } = buildFrom(rows);
+  assert.deepStrictEqual(all(db, 'SELECT id, key FROM tunes ORDER BY id'), [
+    { id: 1, key: 'Dmajor' },
+    { id: 2, key: 'Gmajor' },
+    { id: 3, key: 'Gmajor' },
+    { id: 4, key: 'Adorian' },
+    { id: 5, key: 'Dmajor' },
+    { id: 6, key: 'Bminor' },
+    { id: 7, key: null },
+  ]);
+});
+
 test('a trailing ", The" moves to the front of names, aliases and track names; other articles stay', () => {
   const rows = baseRows();
   rows.tunes.push(['4', '41', 'Danse, La', 'waltz', '3/4', 'Dmajor', ABC1, '', 'x', '']);

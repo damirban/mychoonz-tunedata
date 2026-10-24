@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const ATTRIBUTION =
   'Contains information from The Session (https://thesession.org/), ' +
@@ -46,11 +46,13 @@ const SCHEMA = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 
 -- One row per tune. name, type and composer come from its first setting.
+-- key is the mode most of its settings share (schema 2, KAN-13).
 CREATE TABLE tunes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT,
   composer TEXT,
+  key TEXT,
   tunebooks INTEGER NOT NULL DEFAULT 0,
   settings INTEGER NOT NULL
 );
@@ -244,6 +246,15 @@ function copyTunes(db, report) {
     UPDATE tunes SET settings = c.n
     FROM (SELECT tune_id, count(*) AS n FROM settings GROUP BY tune_id) AS c
     WHERE c.tune_id = tunes.id;
+
+    -- The key most settings share; on a tie, the one with the earliest setting.
+    UPDATE tunes SET key = k.mode
+    FROM (
+      SELECT tune_id, mode, row_number() OVER (PARTITION BY tune_id ORDER BY n DESC, first) AS rn
+      FROM (SELECT tune_id, mode, count(*) AS n, min(id) AS first
+            FROM settings WHERE mode IS NOT NULL GROUP BY tune_id, mode)
+    ) AS k
+    WHERE k.rn = 1 AND k.tune_id = tunes.id;
   `);
   const used = count(db, `SELECT count(*) AS n FROM src.tunes WHERE ${ok}`);
   const settings = count(db, 'SELECT count(*) AS n FROM settings');
