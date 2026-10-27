@@ -89,4 +89,4 @@ jobs:
           fi
           gh release create "$TAG" out/tunedata.db.gz out/manifest.json \
             --title "Tune database $TAG" --latest \
-            --notes "Built from The Session's data dump (adactio/TheSession-data, commit $DUMP_SHA). Contains information from The Session (https://thesession.org/), made available under the ODC Open Database License (ODbL) v1.0: https://opendatacommons.org/licenses/odbl/1-0/"
+            --notes "Built from The Session's data dump (adactio/TheSession-data, commit $DUMP_SHA). $(jq -r .attribution out/manifest.json) https://opendatacommons.org/licenses/odbl/1-0/"

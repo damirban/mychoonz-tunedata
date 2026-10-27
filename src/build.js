@@ -141,7 +141,8 @@ class BuildError extends Error {}
 
 /**
  * Letters folded to their plain form for search. The app folds a query
- * with the same table (lib/services/tune_data.dart), so keep them in step.
+ * with the same table (lib/services/tune_data.dart), so keep them in step:
+ * both repos test the table's fingerprint.
  */
 const FOLD = {
   à: 'a', á: 'a', â: 'a', ã: 'a', ä: 'a', å: 'a', ā: 'a', ă: 'a', ą: 'a', æ: 'ae',
@@ -166,20 +167,20 @@ function fold(name) {
   return out.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-const q = (name) => '"' + name.replace(/"/g, '""') + '"';
+const quoted = (name) => '"' + name.replace(/"/g, '""') + '"';
 /** SQL that is true when [col] holds a whole number. */
-const whole = (col) => `(${col} <> '' AND ${col} NOT GLOB '*[^0-9]*')`;
-const int = (col) => `CAST(${col} AS INTEGER)`;
+const isWhole = (col) => `(${col} <> '' AND ${col} NOT GLOB '*[^0-9]*')`;
+const asInt = (col) => `CAST(${col} AS INTEGER)`;
 /**
  * SQL for a name with a trailing ", The" moved to the front ("Kesh, The" ->
  * "The Kesh"), as the app and The Session's pages show it. The dump stores
  * names sorted that way; other articles are too rare to move.
  */
-const named = (col) => `CASE WHEN ${col} GLOB '*, The' THEN 'The ' || substr(${col}, 1, length(${col}) - 5) ELSE ${col} END`;
+const theFirst = (col) => `CASE WHEN ${col} GLOB '*, The' THEN 'The ' || substr(${col}, 1, length(${col}) - 5) ELSE ${col} END`;
 
 function checkColumns(db) {
   for (const [table, cols] of Object.entries(REQUIRED)) {
-    const have = db.prepare(`PRAGMA src.table_info(${q(table)})`).all().map((c) => c.name);
+    const have = db.prepare(`PRAGMA src.table_info(${quoted(table)})`).all().map((c) => c.name);
     if (have.length === 0) throw new BuildError(`The dump has no table "${table}".`);
     for (const c of cols) {
       if (!have.includes(c)) throw new BuildError(`The dump's table "${table}" has no column "${c}".`);
@@ -193,20 +194,17 @@ function checkColumns(db) {
  */
 function checkRows(db, report) {
   for (const [table, cols] of Object.entries(WHOLE_NUMBERS)) {
-    const total = db.prepare(`SELECT count(*) AS n FROM src.${q(table)}`).get().n;
+    const total = db.prepare(`SELECT count(*) AS n FROM src.${quoted(table)}`).get().n;
     report.source[table] = total;
-    const bad = cols.map((c) => `NOT ${whole(q(c))}`).join(' OR ');
-    const skipped = db.prepare(`SELECT count(*) AS n FROM src.${q(table)} WHERE ${bad}`).get().n;
+    const bad = cols.map((c) => `NOT ${isWhole(quoted(c))}`).join(' OR ');
+    const skipped = db.prepare(`SELECT count(*) AS n FROM src.${quoted(table)} WHERE ${bad}`).get().n;
     if (skipped === 0) continue;
     for (const c of cols) {
-      const rows = db
-        .prepare(`SELECT rowid AS r FROM src.${q(table)} WHERE NOT ${whole(q(c))} ORDER BY rowid LIMIT 5`)
-        .all()
-        .map((r) => r.r);
-      const count = db.prepare(`SELECT count(*) AS n FROM src.${q(table)} WHERE NOT ${whole(q(c))}`).get().n;
-      if (count > 0) {
-        report.problems.push({ table, column: c, fault: 'not a whole number', rows: count, firstRows: rows });
-      }
+      const where = `FROM src.${quoted(table)} WHERE NOT ${isWhole(quoted(c))}`;
+      const rows = count(db, `SELECT count(*) AS n ${where}`);
+      if (rows === 0) continue;
+      const firstRows = db.prepare(`SELECT rowid AS r ${where} ORDER BY rowid LIMIT 5`).all().map((r) => r.r);
+      report.problems.push({ table, column: c, fault: 'not a whole number', rows, firstRows });
     }
     if (skipped / total > MAX_SKIPPED_SHARE) {
       throw new BuildError(
@@ -218,8 +216,8 @@ function checkRows(db, report) {
 }
 
 /** A row is used only when all its whole-number columns are whole numbers. */
-function okRow(table) {
-  return WHOLE_NUMBERS[table].map((c) => whole(q(c))).join(' AND ');
+function usableRows(table) {
+  return WHOLE_NUMBERS[table].map((c) => isWhole(quoted(c))).join(' AND ');
 }
 
 function count(db, sql) {
@@ -227,21 +225,21 @@ function count(db, sql) {
 }
 
 function copyTunes(db, report) {
-  const ok = okRow('tunes');
+  const usable = usableRows('tunes');
   db.exec(`
     INSERT INTO tunes (id, name, type, composer, settings)
     SELECT tid, name, type, composer, 0 FROM (
-      SELECT ${int('tune_id')} AS tid, ${named('trim(name)')} AS name, NULLIF(type, '') AS type,
+      SELECT ${asInt('tune_id')} AS tid, ${theFirst('trim(name)')} AS name, NULLIF(type, '') AS type,
              max(NULLIF(composer, '')) OVER w AS composer,
-             row_number() OVER (w ORDER BY ${int('setting_id')}, rowid) AS rn
-      FROM src.tunes WHERE ${ok}
-      WINDOW w AS (PARTITION BY ${int('tune_id')})
+             row_number() OVER (w ORDER BY ${asInt('setting_id')}, rowid) AS rn
+      FROM src.tunes WHERE ${usable}
+      WINDOW w AS (PARTITION BY ${asInt('tune_id')})
     ) WHERE rn = 1;
 
     INSERT OR IGNORE INTO settings (id, tune_id, meter, mode, abc, date, username)
-    SELECT ${int('setting_id')}, ${int('tune_id')}, NULLIF(meter, ''), NULLIF(mode, ''), abc,
+    SELECT ${asInt('setting_id')}, ${asInt('tune_id')}, NULLIF(meter, ''), NULLIF(mode, ''), abc,
            NULLIF(date, ''), NULLIF(username, '')
-    FROM src.tunes WHERE ${ok} ORDER BY rowid;
+    FROM src.tunes WHERE ${usable} ORDER BY rowid;
 
     UPDATE tunes SET settings = c.n
     FROM (SELECT tune_id, count(*) AS n FROM settings GROUP BY tune_id) AS c
@@ -256,81 +254,81 @@ function copyTunes(db, report) {
     ) AS k
     WHERE k.rn = 1 AND k.tune_id = tunes.id;
   `);
-  const used = count(db, `SELECT count(*) AS n FROM src.tunes WHERE ${ok}`);
+  const used = count(db, `SELECT count(*) AS n FROM src.tunes WHERE ${usable}`);
   const settings = count(db, 'SELECT count(*) AS n FROM settings');
   report.dropped.duplicateSettings = used - settings;
   // Of those, settings whose rows were not identical (the first row is kept).
   report.dropped.duplicateSettingsThatDiffer = count(
     db,
     `SELECT count(*) AS n FROM (
-       SELECT setting_id FROM src.tunes WHERE ${ok} GROUP BY ${int('setting_id')}
+       SELECT setting_id FROM src.tunes WHERE ${usable} GROUP BY ${asInt('setting_id')}
        HAVING count(DISTINCT tune_id || char(31) || meter || char(31) || mode || char(31) || abc || char(31) || date) > 1)`,
   );
 }
 
 function copyAliases(db, report) {
-  const ok = okRow('aliases');
+  const usable = usableRows('aliases');
   db.exec(`
     INSERT OR IGNORE INTO aliases (tune_id, alias)
-    SELECT ${int('tune_id')}, ${named('trim(alias)')} FROM src.aliases
-    WHERE ${ok} AND trim(alias) <> '' AND ${int('tune_id')} IN (SELECT id FROM tunes)
+    SELECT ${asInt('tune_id')}, ${theFirst('trim(alias)')} FROM src.aliases
+    WHERE ${usable} AND trim(alias) <> '' AND ${asInt('tune_id')} IN (SELECT id FROM tunes)
     ORDER BY rowid;
   `);
   report.dropped.aliasesForUnknownTunes = count(
     db,
-    `SELECT count(*) AS n FROM src.aliases WHERE ${ok} AND ${int('tune_id')} NOT IN (SELECT id FROM tunes)`,
+    `SELECT count(*) AS n FROM src.aliases WHERE ${usable} AND ${asInt('tune_id')} NOT IN (SELECT id FROM tunes)`,
   );
 }
 
 function copyPopularity(db, report) {
-  const ok = okRow('tune_popularity');
+  const usable = usableRows('tune_popularity');
   db.exec(`
     UPDATE tunes SET tunebooks = p.n
-    FROM (SELECT ${int('tune_id')} AS tid, max(${int('tunebooks')}) AS n
-          FROM src.tune_popularity WHERE ${ok} GROUP BY tid) AS p
+    FROM (SELECT ${asInt('tune_id')} AS tid, max(${asInt('tunebooks')}) AS n
+          FROM src.tune_popularity WHERE ${usable} GROUP BY tid) AS p
     WHERE tunes.id = p.tid;
   `);
   report.dropped.popularityForUnknownTunes = count(
     db,
-    `SELECT count(DISTINCT ${int('tune_id')}) AS n FROM src.tune_popularity
-     WHERE ${ok} AND ${int('tune_id')} NOT IN (SELECT id FROM tunes)`,
+    `SELECT count(DISTINCT ${asInt('tune_id')}) AS n FROM src.tune_popularity
+     WHERE ${usable} AND ${asInt('tune_id')} NOT IN (SELECT id FROM tunes)`,
   );
 }
 
 function copySets(db, report) {
-  const ok = okRow('sets');
+  const usable = usableRows('sets');
   // Each member's username, and each set's member and date, come from their first row.
   db.exec(`
     INSERT INTO members (id, username)
     SELECT mid, username FROM (
-      SELECT ${int('member_id')} AS mid, NULLIF(username, '') AS username,
-             row_number() OVER (PARTITION BY ${int('member_id')} ORDER BY rowid) AS rn
-      FROM src.sets WHERE ${ok}
+      SELECT ${asInt('member_id')} AS mid, NULLIF(username, '') AS username,
+             row_number() OVER (PARTITION BY ${asInt('member_id')} ORDER BY rowid) AS rn
+      FROM src.sets WHERE ${usable}
     ) WHERE rn = 1;
 
     INSERT INTO member_sets (id, member_id, date)
     SELECT sid, mid, date FROM (
-      SELECT ${int('tuneset')} AS sid, ${int('member_id')} AS mid, NULLIF(date, '') AS date,
-             row_number() OVER (PARTITION BY ${int('tuneset')} ORDER BY rowid) AS rn
-      FROM src.sets WHERE ${ok}
+      SELECT ${asInt('tuneset')} AS sid, ${asInt('member_id')} AS mid, NULLIF(date, '') AS date,
+             row_number() OVER (PARTITION BY ${asInt('tuneset')} ORDER BY rowid) AS rn
+      FROM src.sets WHERE ${usable}
     ) WHERE rn = 1;
 
     INSERT INTO member_set_tunes (set_id, position, tune_id, setting_id)
-    SELECT ${int('tuneset')},
-           row_number() OVER (PARTITION BY ${int('tuneset')} ORDER BY ${int('settingorder')}, rowid),
-           ${int('tune_id')},
-           CASE WHEN ${whole('setting_id')} THEN ${int('setting_id')} END
-    FROM src.sets WHERE ${ok};
+    SELECT ${asInt('tuneset')},
+           row_number() OVER (PARTITION BY ${asInt('tuneset')} ORDER BY ${asInt('settingorder')}, rowid),
+           ${asInt('tune_id')},
+           CASE WHEN ${isWhole('setting_id')} THEN ${asInt('setting_id')} END
+    FROM src.sets WHERE ${usable};
   `);
   report.notes.setsWithTunesAtTheSameOrder = count(
     db,
-    `SELECT count(DISTINCT tuneset) AS n FROM (SELECT tuneset FROM src.sets WHERE ${ok}
-     GROUP BY ${int('tuneset')}, ${int('settingorder')} HAVING count(*) > 1)`,
+    `SELECT count(DISTINCT tuneset) AS n FROM (SELECT tuneset FROM src.sets WHERE ${usable}
+     GROUP BY ${asInt('tuneset')}, ${asInt('settingorder')} HAVING count(*) > 1)`,
   );
   report.notes.membersWithDifferingUsernames = count(
     db,
-    `SELECT count(*) AS n FROM (SELECT member_id FROM src.sets WHERE ${ok}
-     GROUP BY ${int('member_id')} HAVING count(DISTINCT username) > 1)`,
+    `SELECT count(*) AS n FROM (SELECT member_id FROM src.sets WHERE ${usable}
+     GROUP BY ${asInt('member_id')} HAVING count(DISTINCT username) > 1)`,
   );
   report.notes.setTunesWithUnknownSetting = count(
     db,
@@ -344,26 +342,26 @@ function copySets(db, report) {
 }
 
 function copyRecordings(db, report) {
-  const ok = okRow('recordings');
+  const usable = usableRows('recordings');
   db.exec(`
     INSERT INTO recordings (id, artist, title)
     SELECT rid, artist, title FROM (
-      SELECT ${int('id')} AS rid, NULLIF(artist, '') AS artist, NULLIF(recording, '') AS title,
-             row_number() OVER (PARTITION BY ${int('id')} ORDER BY rowid) AS rn
-      FROM src.recordings WHERE ${ok}
+      SELECT ${asInt('id')} AS rid, NULLIF(artist, '') AS artist, NULLIF(recording, '') AS title,
+             row_number() OVER (PARTITION BY ${asInt('id')} ORDER BY rowid) AS rn
+      FROM src.recordings WHERE ${usable}
     ) WHERE rn = 1;
 
     INSERT OR IGNORE INTO recording_tracks (recording_id, track, number, tune_id, tune_name)
-    SELECT ${int('id')}, ${int('track')}, ${int('number')},
-           CASE WHEN ${whole('tune_id')} AND ${int('tune_id')} > 0 THEN ${int('tune_id')} END,
-           NULLIF(${named('trim(tune)')}, '')
-    FROM src.recordings WHERE ${ok} ORDER BY rowid;
+    SELECT ${asInt('id')}, ${asInt('track')}, ${asInt('number')},
+           CASE WHEN ${isWhole('tune_id')} AND ${asInt('tune_id')} > 0 THEN ${asInt('tune_id')} END,
+           NULLIF(${theFirst('trim(tune)')}, '')
+    FROM src.recordings WHERE ${usable} ORDER BY rowid;
   `);
-  const used = count(db, `SELECT count(*) AS n FROM src.recordings WHERE ${ok}`);
+  const used = count(db, `SELECT count(*) AS n FROM src.recordings WHERE ${usable}`);
   report.dropped.recordingTracksRepeated = used - count(db, 'SELECT count(*) AS n FROM recording_tracks');
   report.notes.recordingsWithDifferingNames = count(
     db,
-    `SELECT count(*) AS n FROM (SELECT id FROM src.recordings WHERE ${ok} GROUP BY ${int('id')}
+    `SELECT count(*) AS n FROM (SELECT id FROM src.recordings WHERE ${usable} GROUP BY ${asInt('id')}
      HAVING count(DISTINCT artist || char(31) || recording) > 1)`,
   );
   report.notes.recordingTracksWithoutTune = count(
@@ -508,4 +506,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { build, buildAll, fold, BuildError, SCHEMA_VERSION, ATTRIBUTION };
+module.exports = { build, buildAll, fold, FOLD, BuildError, SCHEMA_VERSION, ATTRIBUTION };

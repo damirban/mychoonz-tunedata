@@ -11,7 +11,7 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
-const { build, buildAll, fold, BuildError, SCHEMA_VERSION } = require('../src/build');
+const { build, buildAll, fold, FOLD, BuildError, SCHEMA_VERSION } = require('../src/build');
 
 const COLUMNS = {
   tunes: ['tune_id', 'setting_id', 'name', 'type', 'meter', 'mode', 'abc', 'date', 'username', 'composer'],
@@ -235,6 +235,16 @@ test('fold: lower case, accents folded, apostrophes dropped, punctuation splits 
   assert.strictEqual(fold("Coffey's"), 'coffeys');
   assert.strictEqual(fold('Ríl Mhór, An (No. 2)'), 'ril mhor an no 2');
   assert.strictEqual(fold('Ærø Œuvre Straße'), 'aero oeuvre strasse');
+});
+
+// The app's test/fold_table_test.dart checks the same fingerprint, so a
+// letter added to one table only fails a test. When you change the table,
+// change it in both repos and update this value in both.
+test('fold table: the same fingerprint as the app\'s', () => {
+  const keys = Object.keys(FOLD).sort();
+  const text = keys.map((k) => `${k}=${FOLD[k]}\n`).join('');
+  const fingerprint = crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+  assert.strictEqual(fingerprint, '90a1f68cf694afc1fb4b43e5cbe7c6a7347222710783228c05a12fb30bc4446b');
 });
 
 test('search: each word matches a word start in a name or alias, ignoring case and accents', () => {
