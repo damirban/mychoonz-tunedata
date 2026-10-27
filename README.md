@@ -66,4 +66,4 @@ What the build changes from the dump:
 - **Sessions and events** are left out.
 - Rows whose ID columns aren't whole numbers are skipped and reported by row number. If more than 1% of a table's rows are skipped, the build fails, because the dump's format has probably changed.
 
-`manifest.json` has the schema version, tag, dump commit and date, build time, `contentHash` (the content, independent of the file's layout), the file's size and SHA-256 (uncompressed and gzipped), the row counts, and the licence and attribution.
+`manifest.json` has the schema version, tag, dump commit and date, build time, `contentHash` (the content, independent of the file's layout), `file` (always `tunedata.db.gz`) and `fileUrl` (where the published file will be, from `--file-url`; the app downloads from there), the file's size and SHA-256 (uncompressed and gzipped), the row counts, and the licence and attribution. The attribution text lives in `src/build.js` (`ATTRIBUTION`); the release notes take it from the manifest.
