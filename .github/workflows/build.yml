@@ -90,3 +90,20 @@ jobs:
           gh release create "$TAG" out/tunedata.db.gz out/manifest.json \
             --title "Tune database $TAG" --latest \
             --notes "Built from The Session's data dump (adactio/TheSession-data, commit $DUMP_SHA). $(jq -r .attribution out/manifest.json) https://opendatacommons.org/licenses/odbl/1-0/"
+
+  # GitHub turns off scheduled workflows in a public repository after 60 days
+  # without a commit; weekly releases don't count. Re-enabling the workflow
+  # through the API resets that timer, so the schedule keeps running without
+  # keepalive commits. Only after a successful scheduled run, and in its own
+  # job so that actions: write isn't given to the build.
+  keepalive:
+    needs: build
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Re-enable this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow enable build.yml --repo "${{ github.repository }}"

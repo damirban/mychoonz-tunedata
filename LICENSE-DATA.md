@@ -10,4 +10,4 @@ The Session's licence adds a section that forbids using, adapting or processing 
 
 Individual tunes and settings may carry their own rights. Each setting keeps the name of the member who posted it.
 
-The code in this repository (the build script, its tests and the workflow) is not part of the database. Its licence is to be chosen before the repository is made public.
+The code in this repository (the build script, its tests and the workflow) is not part of the database. It is not openly licensed: all rights reserved, published so it can be read. See [LICENSE](LICENSE).

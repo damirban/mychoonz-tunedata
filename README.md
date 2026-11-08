@@ -14,9 +14,13 @@ The GitHub Action [`build.yml`](.github/workflows/build.yml) runs every Sunday a
 4. keeps the three files as the run's `tunedata` artifact for 30 days (the private copy for development builds of the app);
 5. publishes a GitHub Release with `tunedata.db.gz` and `manifest.json`, **only when the repository variable `PUBLISH` is `true`**, and only when the content has changed since the last release (or when run by hand with "force").
 
-Publishing is off while this repository is private. Before turning it on: settle the licence questions, choose a licence for the code, make the repository public, then set `PUBLISH` to `true` (Settings → Secrets and variables → Actions → Variables).
+Publishing is off while this repository is private. The licence questions are settled (KAN-142): the database is published under the ODbL ([LICENSE-DATA.md](LICENSE-DATA.md)), and the code is all rights reserved, published so it can be read ([LICENSE](LICENSE)). To turn publishing on, make the repository public, then set `PUBLISH` to `true` (Settings → Secrets and variables → Actions → Variables).
 
-GitHub turns off scheduled workflows in a public repository after 60 days without activity; re-enable it from the Actions tab if that happens.
+GitHub turns off scheduled workflows in a public repository after 60 days without a commit. After each successful scheduled run, the workflow's `keepalive` job re-enables the workflow through the GitHub API, which resets that timer. If it's turned off anyway, re-enable it from the Actions tab.
+
+## Contributions
+
+This repository doesn't take issues or pull requests. Corrections to tunes, settings or names belong on The Session (<https://thesession.org/>); they reach this database with the next weekly build.
 
 ## Building locally
 
